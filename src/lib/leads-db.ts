@@ -1,4 +1,4 @@
-import { getSupabase, isSupabaseConfigured } from "./supabase";
+import { getSupabase, getSupabaseHost, isSupabaseConfigured } from "./supabase";
 
 const TABLE = "hub_leads";
 const LEGACY_KEY = "leads-v2";
@@ -187,4 +187,48 @@ export function writeCachedLeads(leads: Lead[]): void {
   }
 }
 
-export { isSupabaseConfigured };
+/** Monta uma string diagnóstica a partir de um PostgrestError: code · message · details · hint. */
+export function formatSupabaseError(e: unknown): string {
+  if (!e || typeof e !== "object") return String(e ?? "Erro desconhecido");
+  const err = e as { code?: string; message?: string; details?: string; hint?: string };
+  const parts = [
+    err.code && `[${err.code}]`,
+    err.message,
+    err.details && `details: ${err.details}`,
+    err.hint && `hint: ${err.hint}`,
+  ].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "Erro desconhecido ao falar com o Supabase";
+}
+
+export type DiagStep = { step: "select" | "insert" | "delete"; ok: boolean; error?: string };
+export type DiagResult = { host: string; steps: DiagStep[] };
+
+/**
+ * Probe sequencial para isolar a causa: leitura → escrita → exclusão.
+ * Distingue tabela ausente / RLS de leitura / RLS de escrita.
+ */
+export async function diagnoseConnection(): Promise<DiagResult> {
+  const host = getSupabaseHost();
+  const steps: DiagStep[] = [];
+  if (!isSupabaseConfigured()) {
+    return { host, steps: [{ step: "select", ok: false, error: "Supabase não configurado (env vars ausentes)" }] };
+  }
+  const supabase = getSupabase();
+  const probeId = "__diag__";
+
+  // 1. leitura (existência da tabela / RLS de select)
+  const sel = await supabase.from(TABLE).select("id").limit(1);
+  steps.push({ step: "select", ok: !sel.error, error: sel.error ? formatSupabaseError(sel.error) : undefined });
+
+  // 2. escrita (RLS de insert / schema)
+  const ins = await supabase.from(TABLE).insert({ id: probeId }).select("id");
+  steps.push({ step: "insert", ok: !ins.error, error: ins.error ? formatSupabaseError(ins.error) : undefined });
+
+  // 3. exclusão da sonda (RLS de delete + limpeza)
+  const del = await supabase.from(TABLE).delete().eq("id", probeId);
+  steps.push({ step: "delete", ok: !del.error, error: del.error ? formatSupabaseError(del.error) : undefined });
+
+  return { host, steps };
+}
+
+export { isSupabaseConfigured, getSupabaseHost };

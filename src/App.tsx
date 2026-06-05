@@ -4,7 +4,9 @@ import SupabaseSetup from "./components/SupabaseSetup";
 import {
   clearLegacyLeads,
   deleteLeadById,
+  diagnoseConnection,
   fetchLeads,
+  formatSupabaseError,
   isSupabaseConfigured,
   normalizeLead,
   readCachedLeads,
@@ -454,12 +456,21 @@ export default function App() {
   const [dragId, setDragId] = useState(null);
   const [dragOver, setDragOver] = useState(null);
   const [saveErr, setSaveErr] = useState("");
+  const [diag, setDiag] = useState(null);   // resultado do probe diagnoseConnection
   const [briefingLead, setBriefingLead] = useState(null);
   const [guiaLead, setGuiaLead] = useState(null);   // lead que originou a navegação ao guia
   /* guia state */
   const [guiaStage, setGuiaStage] = useState("mapeamento");
   const [guiaPillar, setGuiaPillar] = useState("emp");
   const [guiaTab, setGuiaTab] = useState("atividades");
+
+  // Registra o erro real do Supabase e roda um probe (leitura/escrita/exclusão) para isolar a causa.
+  const reportErr = useCallback((e, fallback) => {
+    const msg = formatSupabaseError(e) || fallback;
+    console.error("[Supabase]", fallback, e);
+    setSaveErr(msg);
+    diagnoseConnection().then(setDiag).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured()) {
@@ -485,15 +496,14 @@ export default function App() {
         const normalized = data.map(normalizeLead);
         setLeads(normalized);
         writeCachedLeads(normalized);
-        setSaveErr("");
+        setSaveErr(""); setDiag(null);
       } catch (e) {
-        console.error("[Supabase] falha ao carregar leads:", e);
         if (!cached?.length) setLeads(SEED.map(normalizeLead));
-        setSaveErr(e?.message || "Falha ao carregar do Supabase");
+        reportErr(e, "Falha ao carregar do Supabase");
       }
       setLoaded(true);
     })();
-  }, []);
+  }, [reportErr]);
 
   const persist = useCallback(async (data) => {
     if (!isSupabaseConfigured()) return;
@@ -501,12 +511,11 @@ export default function App() {
     writeCachedLeads(normalized);
     try {
       await saveLeads(normalized);
-      setSaveErr("");
+      setSaveErr(""); setDiag(null);
     } catch (e) {
-      console.error("[Supabase] falha ao salvar leads:", e);
-      setSaveErr(e?.message || "Falha ao salvar no Supabase");
+      reportErr(e, "Falha ao salvar no Supabase");
     }
-  }, []);
+  }, [reportErr]);
   const update = (data) => { setLeads(data); persist(data); };
 
   const saveLead = (lead) => {
@@ -522,11 +531,10 @@ export default function App() {
     if (!isSupabaseConfigured()) return;
     writeCachedLeads(next.map(normalizeLead));
     deleteLeadById(id)
-      .then(() => setSaveErr(""))
+      .then(() => { setSaveErr(""); setDiag(null); })
       .catch((e) => {
-        console.error("[Supabase] falha ao excluir lead:", e);
         setLeads(prev); writeCachedLeads(prev.map(normalizeLead));
-        setSaveErr(e?.message || "Falha ao excluir no Supabase");
+        reportErr(e, "Falha ao excluir no Supabase");
       });
   };
   const dropTo = (stageId) => {
@@ -602,7 +610,7 @@ export default function App() {
       </div>
 
       {view === "kanban" && (
-        <KanbanView {...{ shown, kpi, taxaAgenda, filter, setFilter, setEditing, saveErr,
+        <KanbanView {...{ shown, kpi, taxaAgenda, filter, setFilter, setEditing, saveErr, diag,
           dragOver, setDragOver, setDragId, dropTo, checkProgress, alertaContato, alertaBriefing,
           fichaCompleta, toggleCheck, openGuia, setBriefingLead }} />
       )}
@@ -633,7 +641,7 @@ function ViewTab({ active, onClick, icon, label }) {
 }
 
 /* ════════════════ KANBAN VIEW ════════════════ */
-function KanbanView({ shown, kpi, taxaAgenda, filter, setFilter, setEditing, saveErr,
+function KanbanView({ shown, kpi, taxaAgenda, filter, setFilter, setEditing, saveErr, diag,
   dragOver, setDragOver, setDragId, dropTo, checkProgress, alertaContato, alertaBriefing,
   fichaCompleta, toggleCheck, openGuia, setBriefingLead }) {
   return (
@@ -661,10 +669,24 @@ function KanbanView({ shown, kpi, taxaAgenda, filter, setFilter, setEditing, sav
       </div>
 
       {saveErr && (
-        <div style={{ margin: "8px 26px 0", padding: "8px 12px", background: C.redBg,
+        <div style={{ margin: "8px 26px 0", padding: "10px 12px", background: C.redBg,
           border: `1px solid ${C.red}`, borderRadius: 8, fontSize: 12, color: C.red }}>
           ⚠ Não foi possível salvar no Supabase. Verifique conexão, tabela hub_leads e políticas RLS.
-          <div style={{ marginTop: 4, fontFamily: "monospace", fontSize: 11, opacity: .85 }}>{saveErr}</div>
+          <div style={{ marginTop: 6, fontFamily: "monospace", fontSize: 11, opacity: .9, wordBreak: "break-word" }}>
+            {saveErr}
+          </div>
+          {diag && (
+            <div style={{ marginTop: 8, fontSize: 11 }}>
+              <div style={{ opacity: .9 }}>Projeto Supabase em uso: <strong>{diag.host}</strong></div>
+              <div style={{ fontFamily: "monospace", marginTop: 4, lineHeight: 1.7 }}>
+                {diag.steps.map((s) => (
+                  <div key={s.step}>
+                    {s.ok ? "✓" : "✗"} {s.step}{s.error ? ` — ${s.error}` : ""}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
