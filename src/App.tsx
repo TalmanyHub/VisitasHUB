@@ -453,7 +453,7 @@ export default function App() {
   const [editing, setEditing] = useState(null);
   const [dragId, setDragId] = useState(null);
   const [dragOver, setDragOver] = useState(null);
-  const [saveErr, setSaveErr] = useState(false);
+  const [saveErr, setSaveErr] = useState("");
   const [briefingLead, setBriefingLead] = useState(null);
   const [guiaLead, setGuiaLead] = useState(null);   // lead que originou a navegação ao guia
   /* guia state */
@@ -485,10 +485,11 @@ export default function App() {
         const normalized = data.map(normalizeLead);
         setLeads(normalized);
         writeCachedLeads(normalized);
-        setSaveErr(false);
-      } catch {
+        setSaveErr("");
+      } catch (e) {
+        console.error("[Supabase] falha ao carregar leads:", e);
         if (!cached?.length) setLeads(SEED.map(normalizeLead));
-        setSaveErr(true);
+        setSaveErr(e?.message || "Falha ao carregar do Supabase");
       }
       setLoaded(true);
     })();
@@ -500,9 +501,10 @@ export default function App() {
     writeCachedLeads(normalized);
     try {
       await saveLeads(normalized);
-      setSaveErr(false);
-    } catch {
-      setSaveErr(true);
+      setSaveErr("");
+    } catch (e) {
+      console.error("[Supabase] falha ao salvar leads:", e);
+      setSaveErr(e?.message || "Falha ao salvar no Supabase");
     }
   }, []);
   const update = (data) => { setLeads(data); persist(data); };
@@ -520,8 +522,12 @@ export default function App() {
     if (!isSupabaseConfigured()) return;
     writeCachedLeads(next.map(normalizeLead));
     deleteLeadById(id)
-      .then(() => setSaveErr(false))
-      .catch(() => { setLeads(prev); writeCachedLeads(prev.map(normalizeLead)); setSaveErr(true); });
+      .then(() => setSaveErr(""))
+      .catch((e) => {
+        console.error("[Supabase] falha ao excluir lead:", e);
+        setLeads(prev); writeCachedLeads(prev.map(normalizeLead));
+        setSaveErr(e?.message || "Falha ao excluir no Supabase");
+      });
   };
   const dropTo = (stageId) => {
     if (!dragId) return;
@@ -658,6 +664,7 @@ function KanbanView({ shown, kpi, taxaAgenda, filter, setFilter, setEditing, sav
         <div style={{ margin: "8px 26px 0", padding: "8px 12px", background: C.redBg,
           border: `1px solid ${C.red}`, borderRadius: 8, fontSize: 12, color: C.red }}>
           ⚠ Não foi possível salvar no Supabase. Verifique conexão, tabela hub_leads e políticas RLS.
+          <div style={{ marginTop: 4, fontFamily: "monospace", fontSize: 11, opacity: .85 }}>{saveErr}</div>
         </div>
       )}
 
