@@ -7,8 +7,10 @@ import {
   fetchLeads,
   isSupabaseConfigured,
   normalizeLead,
+  readCachedLeads,
   readLegacyLeads,
   saveLeads,
+  writeCachedLeads,
 } from "./lib/leads-db";
 
 /* ════════════════ DESIGN TOKENS ════════════════ */
@@ -464,6 +466,12 @@ export default function App() {
       setLoaded(true);
       return;
     }
+    // Render instantâneo a partir do cache local; o Supabase revalida em segundo plano.
+    const cached = readCachedLeads();
+    if (cached?.length) {
+      setLeads(cached.map(normalizeLead));
+      setLoaded(true);
+    }
     (async () => {
       try {
         let data = await fetchLeads();
@@ -474,10 +482,12 @@ export default function App() {
           data = initial;
         }
         if (legacy?.length) clearLegacyLeads();
-        setLeads(data.map(normalizeLead));
+        const normalized = data.map(normalizeLead);
+        setLeads(normalized);
+        writeCachedLeads(normalized);
         setSaveErr(false);
       } catch {
-        setLeads(SEED.map(normalizeLead));
+        if (!cached?.length) setLeads(SEED.map(normalizeLead));
         setSaveErr(true);
       }
       setLoaded(true);
@@ -486,8 +496,10 @@ export default function App() {
 
   const persist = useCallback(async (data) => {
     if (!isSupabaseConfigured()) return;
+    const normalized = data.map(normalizeLead);
+    writeCachedLeads(normalized);
     try {
-      await saveLeads(data.map(normalizeLead));
+      await saveLeads(normalized);
       setSaveErr(false);
     } catch {
       setSaveErr(true);
@@ -506,9 +518,10 @@ export default function App() {
     const next = leads.filter((l) => l.id !== id);
     setLeads(next);
     if (!isSupabaseConfigured()) return;
+    writeCachedLeads(next.map(normalizeLead));
     deleteLeadById(id)
       .then(() => setSaveErr(false))
-      .catch(() => { setLeads(prev); setSaveErr(true); });
+      .catch(() => { setLeads(prev); writeCachedLeads(prev.map(normalizeLead)); setSaveErr(true); });
   };
   const dropTo = (stageId) => {
     if (!dragId) return;

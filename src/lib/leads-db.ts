@@ -2,6 +2,7 @@ import { getSupabase, isSupabaseConfigured } from "./supabase";
 
 const TABLE = "hub_leads";
 const LEGACY_KEY = "leads-v2";
+const CACHE_KEY = "hub_leads_cache";
 
 export type Lead = {
   id: string;
@@ -163,6 +164,27 @@ export function readLegacyLeads(): Lead[] | null {
 
 export function clearLegacyLeads(): void {
   localStorage.removeItem(LEGACY_KEY);
+}
+
+/** Cache local dos leads — permite render instantâneo enquanto o Supabase responde. */
+export function readCachedLeads(): Lead[] | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<Lead>[];
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    return parsed.map((l) => normalizeLead({ ...l, id: l.id || crypto.randomUUID() }));
+  } catch {
+    return null;
+  }
+}
+
+export function writeCachedLeads(leads: Lead[]): void {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(leads));
+  } catch {
+    /* localStorage indisponível (modo privado / cota) — ignora */
+  }
 }
 
 export { isSupabaseConfigured };
