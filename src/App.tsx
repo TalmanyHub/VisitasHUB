@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import SupabaseSetup from "./components/SupabaseSetup";
+import Login from "./components/Login";
+import { isAuthenticated, setAuthenticated } from "./lib/auth";
 import {
   clearLegacyLeads,
   deleteLeadById,
@@ -448,6 +450,7 @@ Relatório de dores completo em anexo.`;
 
 /* ════════════════ APP ════════════════ */
 export default function App() {
+  const [authed, setAuthed] = useState(isAuthenticated);
   const [view, setView] = useState("kanban");        // kanban | guia
   const [leads, setLeads] = useState([]);
   const [loaded, setLoaded] = useState(false);
@@ -473,6 +476,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!authed) return;            // só carrega dados após o login
     if (!isSupabaseConfigured()) {
       setLoaded(true);
       return;
@@ -503,7 +507,7 @@ export default function App() {
       }
       setLoaded(true);
     })();
-  }, [reportErr]);
+  }, [authed, reportErr]);
 
   const persist = useCallback(async (data) => {
     if (!isSupabaseConfigured()) return;
@@ -587,6 +591,10 @@ export default function App() {
     return { txt: "Briefing pendente (24h)", urgent: false };
   };
 
+  const logout = () => { setAuthenticated(false); setAuthed(false); };
+
+  if (!authed) return <Login onSuccess={() => { setAuthenticated(true); setAuthed(true); }} />;
+
   if (!isSupabaseConfigured()) return <SupabaseSetup />;
 
   if (!loaded)
@@ -596,8 +604,16 @@ export default function App() {
     <div style={{ fontFamily: "'DM Sans',system-ui,sans-serif", background: C.bg, minHeight: "100vh", color: C.ink }}>
       {/* ══ HEADER ══ */}
       <div style={{ background: C.ink, padding: "18px 26px 0" }}>
-        <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase",
-          color: C.orange, marginBottom: 4 }}>HUB SENAI Alagoas · Sistema Operacional</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase",
+            color: C.orange, marginBottom: 4 }}>HUB SENAI Alagoas · Sistema Operacional</div>
+          <button onClick={logout} title="Sair"
+            style={{ flexShrink: 0, background: "rgba(255,255,255,.1)", color: "rgba(255,255,255,.75)",
+              border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: 600,
+              cursor: "pointer" }}>
+            Sair
+          </button>
+        </div>
         <div style={{ fontSize: 22, fontWeight: 700, color: "#fff" }}>Geração de Visitas Técnicas</div>
         <div style={{ fontSize: 12, color: "rgba(255,255,255,.4)", marginTop: 3, marginBottom: 14 }}>
           Guia operacional + gestão Kanban do funil · 2026</div>
