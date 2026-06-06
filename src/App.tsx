@@ -1,14 +1,20 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import SupabaseSetup from "./components/SupabaseSetup";
+import Login from "./components/Login";
+import { isAuthenticated, setAuthenticated } from "./lib/auth";
 import {
   clearLegacyLeads,
   deleteLeadById,
+  diagnoseConnection,
   fetchLeads,
+  formatSupabaseError,
   isSupabaseConfigured,
   normalizeLead,
+  readCachedLeads,
   readLegacyLeads,
   saveLeads,
+  writeCachedLeads,
 } from "./lib/leads-db";
 
 /* ════════════════ DESIGN TOKENS ════════════════ */
@@ -444,6 +450,7 @@ Relatório de dores completo em anexo.`;
 
 /* ════════════════ APP ════════════════ */
 export default function App() {
+  const [authed, setAuthed] = useState(isAuthenticated);
   const [view, setView] = useState("kanban");        // kanban | guia
   const [leads, setLeads] = useState([]);
   const [loaded, setLoaded] = useState(false);
@@ -451,7 +458,8 @@ export default function App() {
   const [editing, setEditing] = useState(null);
   const [dragId, setDragId] = useState(null);
   const [dragOver, setDragOver] = useState(null);
-  const [saveErr, setSaveErr] = useState(false);
+  const [saveErr, setSaveErr] = useState("");
+  const [diag, setDiag] = useState(null);   // resultado do probe diagnoseConnection
   const [briefingLead, setBriefingLead] = useState(null);
   const [guiaLead, setGuiaLead] = useState(null);   // lead que originou a navegação ao guia
   /* guia state */
@@ -459,40 +467,68 @@ export default function App() {
   const [guiaPillar, setGuiaPillar] = useState("emp");
   const [guiaTab, setGuiaTab] = useState("atividades");
 
+  // Registra o erro real do Supabase e roda um probe (leitura/escrita/exclusão) para isolar a causa.
+  const reportErr = useCallback((e, fallback) => {
+    const msg = formatSupabaseError(e) || fallback;
+    console.error("[Supabase]", fallback, e);
+    setSaveErr(msg);
+    diagnoseConnection().then(setDiag).catch(() => {});
+  }, []);
+
   useEffect(() => {
+    if (!authed) return;            // só carrega dados após o login
     if (!isSupabaseConfigured()) {
       setLoaded(true);
       return;
     }
+    // Render instantâneo a partir do cache local; o Supabase revalida em segundo plano.
+    const cached = readCachedLeads();
+    if (cached?.length) {
+      setLeads(cached.map(normalizeLead));
+      setLoaded(true);
+    }
     (async () => {
       try {
-        let data = await fetchLeads();
+        const remote = await fetchLeads();
         const legacy = readLegacyLeads();
-        if (data.length === 0) {
+        if (remote.length > 0) {
+          // Supabase é a fonte compartilhada da verdade quando tem dados.
+          const normalized = remote.map(normalizeLead);
+          setLeads(normalized);
+          writeCachedLeads(normalized);
+        } else if (cached?.length) {
+          // Supabase vazio, mas há dados locais: sobe o local — NUNCA apaga o que já existe.
+          await saveLeads(cached);
+          writeCachedLeads(cached);
+        } else {
+          // Tudo vazio = primeira vez: semeia (migra legado se houver).
           const initial = (legacy?.length ? legacy : SEED).map(normalizeLead);
           await saveLeads(initial);
-          data = initial;
+          setLeads(initial);
+          writeCachedLeads(initial);
         }
         if (legacy?.length) clearLegacyLeads();
-        setLeads(data.map(normalizeLead));
-        setSaveErr(false);
-      } catch {
-        setLeads(SEED.map(normalizeLead));
-        setSaveErr(true);
+        setSaveErr(""); setDiag(null);
+      } catch (e) {
+        // Falha de rede/RLS: preserva o que estiver no cache; só semeia se não houver nada.
+        if (!cached?.length) setLeads(SEED.map(normalizeLead));
+        reportErr(e, "Falha ao carregar do Supabase");
       }
       setLoaded(true);
     })();
-  }, []);
+  }, [authed, reportErr]);
 
   const persist = useCallback(async (data) => {
+    const normalized = data.map(normalizeLead);
+    writeCachedLeads(normalized);          // salva local primeiro — garantido, nunca perde
     if (!isSupabaseConfigured()) return;
     try {
-      await saveLeads(data.map(normalizeLead));
-      setSaveErr(false);
-    } catch {
-      setSaveErr(true);
+      await saveLeads(normalized);
+      setSaveErr(""); setDiag(null);
+    } catch (e) {
+      reportErr(e, "Falha ao salvar no Supabase");
     }
-  }, []);
+  }, [reportErr]);
   const update = (data) => { setLeads(data); persist(data); };
 
   const saveLead = (lead) => {
@@ -505,10 +541,14 @@ export default function App() {
     const prev = leads;
     const next = leads.filter((l) => l.id !== id);
     setLeads(next);
+    writeCachedLeads(next.map(normalizeLead));   // salva local primeiro — garantido
     if (!isSupabaseConfigured()) return;
     deleteLeadById(id)
-      .then(() => setSaveErr(false))
-      .catch(() => { setLeads(prev); setSaveErr(true); });
+      .then(() => { setSaveErr(""); setDiag(null); })
+      .catch((e) => {
+        setLeads(prev); writeCachedLeads(prev.map(normalizeLead));
+        reportErr(e, "Falha ao excluir no Supabase");
+      });
   };
   const dropTo = (stageId) => {
     if (!dragId) return;
@@ -560,6 +600,10 @@ export default function App() {
     return { txt: "Briefing pendente (24h)", urgent: false };
   };
 
+  const logout = () => { setAuthenticated(false); setAuthed(false); };
+
+  if (!authed) return <Login onSuccess={() => { setAuthenticated(true); setAuthed(true); }} />;
+
   if (!isSupabaseConfigured()) return <SupabaseSetup />;
 
   if (!loaded)
@@ -569,8 +613,16 @@ export default function App() {
     <div style={{ fontFamily: "'DM Sans',system-ui,sans-serif", background: C.bg, minHeight: "100vh", color: C.ink }}>
       {/* ══ HEADER ══ */}
       <div style={{ background: C.ink, padding: "18px 26px 0" }}>
-        <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase",
-          color: C.orange, marginBottom: 4 }}>HUB SENAI Alagoas · Sistema Operacional</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase",
+            color: C.orange, marginBottom: 4 }}>HUB SENAI Alagoas · Sistema Operacional</div>
+          <button onClick={logout} title="Sair"
+            style={{ flexShrink: 0, background: "rgba(255,255,255,.1)", color: "rgba(255,255,255,.75)",
+              border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: 600,
+              cursor: "pointer" }}>
+            Sair
+          </button>
+        </div>
         <div style={{ fontSize: 22, fontWeight: 700, color: "#fff" }}>Geração de Visitas Técnicas</div>
         <div style={{ fontSize: 12, color: "rgba(255,255,255,.4)", marginTop: 3, marginBottom: 14 }}>
           Guia operacional + gestão Kanban do funil · 2026</div>
@@ -583,7 +635,7 @@ export default function App() {
       </div>
 
       {view === "kanban" && (
-        <KanbanView {...{ shown, kpi, taxaAgenda, filter, setFilter, setEditing, saveErr,
+        <KanbanView {...{ shown, kpi, taxaAgenda, filter, setFilter, setEditing, saveErr, diag,
           dragOver, setDragOver, setDragId, dropTo, checkProgress, alertaContato, alertaBriefing,
           fichaCompleta, toggleCheck, openGuia, setBriefingLead }} />
       )}
@@ -614,7 +666,7 @@ function ViewTab({ active, onClick, icon, label }) {
 }
 
 /* ════════════════ KANBAN VIEW ════════════════ */
-function KanbanView({ shown, kpi, taxaAgenda, filter, setFilter, setEditing, saveErr,
+function KanbanView({ shown, kpi, taxaAgenda, filter, setFilter, setEditing, saveErr, diag,
   dragOver, setDragOver, setDragId, dropTo, checkProgress, alertaContato, alertaBriefing,
   fichaCompleta, toggleCheck, openGuia, setBriefingLead }) {
   return (
@@ -642,9 +694,24 @@ function KanbanView({ shown, kpi, taxaAgenda, filter, setFilter, setEditing, sav
       </div>
 
       {saveErr && (
-        <div style={{ margin: "8px 26px 0", padding: "8px 12px", background: C.redBg,
+        <div style={{ margin: "8px 26px 0", padding: "10px 12px", background: C.redBg,
           border: `1px solid ${C.red}`, borderRadius: 8, fontSize: 12, color: C.red }}>
           ⚠ Não foi possível salvar no Supabase. Verifique conexão, tabela hub_leads e políticas RLS.
+          <div style={{ marginTop: 6, fontFamily: "monospace", fontSize: 11, opacity: .9, wordBreak: "break-word" }}>
+            {saveErr}
+          </div>
+          {diag && (
+            <div style={{ marginTop: 8, fontSize: 11 }}>
+              <div style={{ opacity: .9 }}>Projeto Supabase em uso: <strong>{diag.host}</strong></div>
+              <div style={{ fontFamily: "monospace", marginTop: 4, lineHeight: 1.7 }}>
+                {diag.steps.map((s) => (
+                  <div key={s.step}>
+                    {s.ok ? "✓" : "✗"} {s.step}{s.error ? ` — ${s.error}` : ""}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
