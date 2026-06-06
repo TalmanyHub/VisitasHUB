@@ -489,19 +489,28 @@ export default function App() {
     }
     (async () => {
       try {
-        let data = await fetchLeads();
+        const remote = await fetchLeads();
         const legacy = readLegacyLeads();
-        if (data.length === 0) {
+        if (remote.length > 0) {
+          // Supabase é a fonte compartilhada da verdade quando tem dados.
+          const normalized = remote.map(normalizeLead);
+          setLeads(normalized);
+          writeCachedLeads(normalized);
+        } else if (cached?.length) {
+          // Supabase vazio, mas há dados locais: sobe o local — NUNCA apaga o que já existe.
+          await saveLeads(cached);
+          writeCachedLeads(cached);
+        } else {
+          // Tudo vazio = primeira vez: semeia (migra legado se houver).
           const initial = (legacy?.length ? legacy : SEED).map(normalizeLead);
           await saveLeads(initial);
-          data = initial;
+          setLeads(initial);
+          writeCachedLeads(initial);
         }
         if (legacy?.length) clearLegacyLeads();
-        const normalized = data.map(normalizeLead);
-        setLeads(normalized);
-        writeCachedLeads(normalized);
         setSaveErr(""); setDiag(null);
       } catch (e) {
+        // Falha de rede/RLS: preserva o que estiver no cache; só semeia se não houver nada.
         if (!cached?.length) setLeads(SEED.map(normalizeLead));
         reportErr(e, "Falha ao carregar do Supabase");
       }
@@ -510,9 +519,9 @@ export default function App() {
   }, [authed, reportErr]);
 
   const persist = useCallback(async (data) => {
-    if (!isSupabaseConfigured()) return;
     const normalized = data.map(normalizeLead);
-    writeCachedLeads(normalized);
+    writeCachedLeads(normalized);          // salva local primeiro — garantido, nunca perde
+    if (!isSupabaseConfigured()) return;
     try {
       await saveLeads(normalized);
       setSaveErr(""); setDiag(null);
@@ -532,8 +541,8 @@ export default function App() {
     const prev = leads;
     const next = leads.filter((l) => l.id !== id);
     setLeads(next);
+    writeCachedLeads(next.map(normalizeLead));   // salva local primeiro — garantido
     if (!isSupabaseConfigured()) return;
-    writeCachedLeads(next.map(normalizeLead));
     deleteLeadById(id)
       .then(() => { setSaveErr(""); setDiag(null); })
       .catch((e) => {
