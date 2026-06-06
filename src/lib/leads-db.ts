@@ -50,6 +50,36 @@ type LeadRow = {
   created_at: string;
 };
 
+/** Mapa de migração: serviços antigos → as 9 linhas oficiais atuais. */
+const SERVICE_ALIASES: Record<string, string> = {
+  "Sensoriamento e Conectividade por Temperatura": "SENSORIAMENTO E CONECTIVIDADE",
+  "Sensoriamento e Conectividade por Contagem": "SENSORIAMENTO E CONECTIVIDADE",
+  "Sensoriamento e Conectividade (Cresce Indústria)": "SENSORIAMENTO E CONECTIVIDADE",
+  "Prototipagem Digital": "PROTOTIPAGEM",
+  "Modelagem Digital 3D (Cresce Indústria)": "PROTOTIPAGEM",
+  "Prototipagem Física": "PROTOTIPAGEM",
+  "Inovação em Produto": "PESQUISA E DESENVOLVIMENTO",
+  "Mapeamento Tecnológico": "PESQUISA E DESENVOLVIMENTO",
+  "Bootcamp de Inteligência Artificial": "BOOTCAMP",
+  "Capacitação Empreendedora": "EDUCAÇÃO EMPREENDEDORA E NOVOS NEGÓCIOS",
+  "Desenvolvimento / Aceleração de Negócios": "EDUCAÇÃO EMPREENDEDORA E NOVOS NEGÓCIOS",
+  "Estratégia e Governança da Inovação": "INOVAÇÃO CORPORATIVA",
+  "Cultura de Inovação": "INOVAÇÃO CORPORATIVA",
+  "Conexão com Ecossistema de Inovação": "INOVAÇÃO ABERTA",
+  "Inovação para a Indústria — Smart Factory": "PLATAFORMA DE INOVAÇÃO PARA A INDÚSTRIA",
+  "Inovação para a Indústria — Aliança Industrial": "PLATAFORMA DE INOVAÇÃO PARA A INDÚSTRIA",
+  "Inovação para a Indústria — Aliança Educacional": "PLATAFORMA DE INOVAÇÃO PARA A INDÚSTRIA",
+  "Inovação para a Indústria — Saúde Conectada": "PLATAFORMA DE INOVAÇÃO PARA A INDÚSTRIA",
+  "Linha de Fomento — Recursos não reembolsáveis": "OUTRAS LINHAS DE FOMENTO",
+};
+
+/** Normaliza a lista de serviços de fit, migrando valores antigos e removendo duplicatas. */
+function migrateFit(raw: unknown): string[] {
+  const arr = Array.isArray(raw) ? raw : raw ? [String(raw)] : [];
+  const mapped = arr.map((s) => SERVICE_ALIASES[s as string] ?? s);
+  return Array.from(new Set(mapped));
+}
+
 export function normalizeLead(raw: Partial<Lead> & { id: string }): Lead {
   return {
     id: raw.id,
@@ -61,7 +91,7 @@ export function normalizeLead(raw: Partial<Lead> & { id: string }): Lead {
     decisorCargo: raw.decisorCargo ?? "",
     contato: raw.contato ?? "",
     dor: raw.dor ?? "",
-    fit: Array.isArray(raw.fit) ? raw.fit : raw.fit ? [String(raw.fit)] : [],
+    fit: migrateFit(raw.fit),
     responsaveis: Array.isArray(raw.responsaveis) ? raw.responsaveis : [],
     canal: raw.canal ?? "E-mail",
     proxContato: raw.proxContato ?? "",
