@@ -58,39 +58,17 @@ const PILLARS = {
 /* Lista agrupada — todos os serviços ficam disponíveis para ambos os pilares,
    já que vários atendem tanto setor público quanto indústria. */
 const SERVICES = [
-  { group: "Sensoriamento e Conectividade", items: [
-    "Sensoriamento e Conectividade por Temperatura",
-    "Sensoriamento e Conectividade por Contagem",
-    "Sensoriamento e Conectividade (Cresce Indústria)",
-  ]},
-  { group: "Prototipagem e Modelagem", items: [
-    "Prototipagem Digital",
-    "Modelagem Digital 3D (Cresce Indústria)",
-    "Prototipagem Física",
-  ]},
-  { group: "Inovação e Tecnologia", items: [
-    "Inovação em Produto",
-    "Mapeamento Tecnológico",
-    "Bootcamp de Inteligência Artificial",
-  ]},
-  { group: "Empreendedorismo e Gestão", items: [
-    "Capacitação Empreendedora",
-    "Desenvolvimento / Aceleração de Negócios",
-    "Estratégia e Governança da Inovação",
-    "Cultura de Inovação",
-    "Conexão com Ecossistema de Inovação",
-  ]},
-  { group: "Inovação para a Indústria", items: [
-    "Inovação para a Indústria — Smart Factory",
-    "Inovação para a Indústria — Aliança Industrial",
-    "Inovação para a Indústria — Aliança Educacional",
-    "Inovação para a Indústria — Saúde Conectada",
-  ]},
-  { group: "Fomento", items: [
-    "Linha de Fomento — Recursos não reembolsáveis",
-  ]},
+  "SENSORIAMENTO E CONECTIVIDADE",
+  "PROTOTIPAGEM",
+  "PESQUISA E DESENVOLVIMENTO",
+  "BOOTCAMP",
+  "EDUCAÇÃO EMPREENDEDORA E NOVOS NEGÓCIOS",
+  "INOVAÇÃO CORPORATIVA",
+  "INOVAÇÃO ABERTA",
+  "PLATAFORMA DE INOVAÇÃO PARA A INDÚSTRIA",
+  "OUTRAS LINHAS DE FOMENTO",
 ];
-const ALL_SERVICES = SERVICES.flatMap((g) => g.items);
+const ALL_SERVICES = SERVICES;
 
 /* ════════════════ EQUIPE / RESPONSÁVEIS ════════════════ */
 const RESPONSAVEIS = [
@@ -372,11 +350,11 @@ const blankLead = (pillar = "emp") => ({
 const SEED = [
   { ...blankLead("emp"), org: "Prefeitura de Arapiraca", segment: "Prefeitura — interior",
     decisorNome: "—", decisorCargo: "Sec. de Desenvolvimento Econômico", contato: "",
-    dor: "Alta informalidade entre jovens", fit: ["Capacitação Empreendedora"],
+    dor: "Alta informalidade entre jovens", fit: ["EDUCAÇÃO EMPREENDEDORA E NOVOS NEGÓCIOS"],
     responsaveis: ["Marcel Muller"], stage: "mapeamento" },
   { ...blankLead("proto"), org: "MetalNorte Indústria", segment: "Manufatura metálica",
     decisorNome: "Carlos R.", decisorCargo: "Gerente de Engenharia", contato: "(82) 9xxxx-xxxx",
-    dor: "Retrabalho por erro de encaixe", fit: ["Prototipagem Física", "Modelagem Digital 3D (Cresce Indústria)"],
+    dor: "Retrabalho por erro de encaixe", fit: ["PROTOTIPAGEM"],
     responsaveis: ["Wesley Andrade", "Helder Junior"], canal: "LinkedIn",
     proxContato: todayISO(), stage: "exploracao" },
 ];
@@ -2023,32 +2001,23 @@ function ServicesPicker({ selected, onChange, pillarColor }) {
         <span>{open ? "▾" : "▸"}</span>
         <span>{safe.length === 0 ? "Selecionar serviços…" : "Editar seleção"}</span>
       </button>
-      {/* lista agrupada */}
+      {/* lista de serviços */}
       {open && (
         <div style={{ borderTop: `1px solid ${C.border}`, maxHeight: 280, overflowY: "auto",
           background: C.bg }}>
-          {SERVICES.map((g) => (
-            <div key={g.group}>
-              <div style={{ padding: "8px 12px 4px", fontSize: 9, fontWeight: 700,
-                letterSpacing: ".09em", textTransform: "uppercase", color: C.ink3,
-                background: C.bg2, borderBottom: `1px solid ${C.border}` }}>
-                {g.group}
-              </div>
-              {g.items.map((svc) => {
-                const checked = safe.includes(svc);
-                return (
-                  <label key={svc} style={{ display: "flex", gap: 8, alignItems: "center",
-                    padding: "7px 12px", fontSize: 12, color: C.ink2, cursor: "pointer",
-                    background: checked ? pillarColor + "10" : "transparent",
-                    borderBottom: `1px solid ${C.border}` }}>
-                    <input type="checkbox" checked={checked} onChange={() => toggle(svc)}
-                      style={{ accentColor: pillarColor, flexShrink: 0 }} />
-                    <span>{svc}</span>
-                  </label>
-                );
-              })}
-            </div>
-          ))}
+          {SERVICES.map((svc) => {
+            const checked = safe.includes(svc);
+            return (
+              <label key={svc} style={{ display: "flex", gap: 8, alignItems: "center",
+                padding: "9px 12px", fontSize: 12, color: C.ink2, cursor: "pointer",
+                background: checked ? pillarColor + "10" : "transparent",
+                borderBottom: `1px solid ${C.border}` }}>
+                <input type="checkbox" checked={checked} onChange={() => toggle(svc)}
+                  style={{ accentColor: pillarColor, flexShrink: 0 }} />
+                <span>{svc}</span>
+              </label>
+            );
+          })}
         </div>
       )}
     </div>
