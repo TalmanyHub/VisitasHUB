@@ -48,6 +48,19 @@ const STAGES = [
 ];
 const STAGE_IDX = Object.fromEntries(STAGES.map((s, i) => [s.id, i]));
 
+/* Etapa terminal fora do funil — oportunidades sem retorno ou descartadas */
+const PERDIDO = { id: "perdido", num: "✕", icon: "🚫", name: "Perdido", color: C.red,
+  desc: "Sem retorno no prazo ou descartada",
+  eyebrow: "Fora do funil", title: "Oportunidades perdidas",
+  intro: "Leads que não avançaram — sem retorno dentro do prazo ou descartados. Registre o motivo para aprender com o padrão de perdas." };
+/* colunas do quadro = funil + perdido; STAGES continua sendo só o funil (métricas) */
+const BOARD_STAGES = [...STAGES, PERDIDO];
+const STAGE_BY_ID = Object.fromEntries(BOARD_STAGES.map((s) => [s.id, s]));
+/* dias após a data de próximo contato vencida para sinalizar candidato a Perdido */
+const LOST_THRESHOLD_DAYS = 30;
+const MOTIVOS_PERDA = ["Sem retorno", "Sem verba / orçamento", "Escolheu concorrente",
+  "Fora de fit (sem aderência)", "Timing inadequado"];
+
 /* ════════════════ PILARES ════════════════ */
 const PILLARS = {
   emp: { label: "Empreendedorismo", short: "Empreend.", icon: "🚀", color: C.emp, bg: C.empBg },
@@ -109,6 +122,7 @@ const CHECKLISTS = {
   handoff: ["Relatório de dores preenchido (até 2h)", "Briefing completo montado", "Pilar de maior fit definido",
     "Contexto orçamentário registrado", "Decisor final (quem assina) confirmado",
     "Objeções e urgência documentadas", "Briefing enviado ao comercial (até 24h)", "WA de confirmação de devolutiva enviado"],
+  perdido: ["Motivo da perda registrado", "Follow-ups de retomada esgotados", "Aprendizado documentado"],
 };
 
 /* ════════════════ CONTEÚDO DO GUIA ════════════════ */
@@ -341,11 +355,42 @@ const daysDiff = (iso) => {
   if (!iso) return null;
   return Math.round((new Date(iso + "T00:00") - new Date(todayISO() + "T00:00")) / 86400000);
 };
+/* data local no formato yyyy-mm-dd (sem shift de fuso do toISOString) */
+const isoDay = (date) => {
+  const y = date.getFullYear();
+  const mo = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${mo}-${d}`;
+};
+/* intervalo da semana (segunda→domingo); offset em semanas (0 = atual, -1 = anterior) */
+const weekRange = (offset = 0) => {
+  const now = new Date();
+  const dow = (now.getDay() + 6) % 7; // segunda = 0
+  const mon = new Date(now); mon.setDate(now.getDate() - dow + offset * 7);
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  return { from: isoDay(mon), to: isoDay(sun) };
+};
+/* intervalo do mês; offset em meses (0 = atual, -1 = anterior) */
+const monthRange = (offset = 0) => {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const last = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0);
+  return { from: isoDay(first), to: isoDay(last) };
+};
+const PERIODS = [
+  { id: "all", label: "Tudo" },
+  { id: "week", label: "Esta semana" },
+  { id: "lastweek", label: "Semana anterior" },
+  { id: "month", label: "Este mês" },
+  { id: "lastmonth", label: "Mês anterior" },
+  { id: "custom", label: "Personalizado" },
+];
+const fmtBR = (iso) => (iso ? new Date(iso + "T00:00").toLocaleDateString("pt-BR") : "—");
 const blankLead = (pillar = "emp") => ({
   id: uid(), stage: "mapeamento", pillar, org: "", segment: "", decisorNome: "", decisorCargo: "",
   contato: "", whatsapp: "", dor: "", fit: [], responsaveis: [], canal: "E-mail", proxContato: "", dataVisita: "",
   objecoes: "", relatorioDores: "", decisorFinalNome: "", decisorFinalCargo: "", decisorFinalContato: "",
-  proximoPasso: "", visitaRealizada: false, briefingEnviado: false, dataEntradaHandoff: "", checks: {},
+  proximoPasso: "", visitaRealizada: false, motivoPerda: "", briefingEnviado: false, dataEntradaHandoff: "", checks: {},
   createdAt: todayISO(),
 });
 const SEED = [
@@ -551,15 +596,17 @@ export default function App() {
   const fichaCompleta = (l) =>
     l.org && l.segment && l.decisorNome && l.contato && l.dor && l.fit && l.fit.length > 0 && l.proxContato;
   const checkProgress = (lead) => {
-    const list = CHECKLISTS[lead.stage];
+    const list = CHECKLISTS[lead.stage] || [];
     const done = list.filter((_, i) => lead.checks[lead.stage + ":" + i]).length;
-    return { done, total: list.length, pct: Math.round((done / list.length) * 100) };
+    return { done, total: list.length, pct: list.length ? Math.round((done / list.length) * 100) : 0 };
   };
+  const ativos = shown.filter((l) => l.stage !== "perdido");
   const kpi = {
-    total: shown.length,
-    fichasOk: shown.filter(fichaCompleta).length,
-    visitas: shown.filter((l) => STAGE_IDX[l.stage] >= 2).length,
-    handoff: shown.filter((l) => l.stage === "handoff").length,
+    total: ativos.length,
+    fichasOk: ativos.filter(fichaCompleta).length,
+    visitas: ativos.filter((l) => STAGE_IDX[l.stage] >= 2).length,
+    handoff: ativos.filter((l) => l.stage === "handoff").length,
+    perdidos: shown.filter((l) => l.stage === "perdido").length,
   };
   const taxaAgenda = kpi.total ? Math.round((kpi.visitas / kpi.total) * 100) : 0;
 
@@ -567,6 +614,7 @@ export default function App() {
     if (l.stage !== "mapeamento" && l.stage !== "exploracao") return null;
     const d = daysDiff(l.proxContato);
     if (d === null) return null;
+    if (-d >= LOST_THRESHOLD_DAYS) return { txt: `Sem retorno há ${-d}d — candidato a Perdido`, urgent: true };
     if (d < 0) return { txt: `Contato vencido há ${-d}d`, urgent: true };
     if (d === 0) return { txt: "Contato hoje", urgent: false };
     return null;
@@ -656,6 +704,7 @@ function KanbanView({ shown, kpi, taxaAgenda, filter, setFilter, setEditing, sav
         <Kpi label="Taxa de agendamento" val={taxaAgenda + "%"} sub="meta ≥ 15%" color={C.orange}
           warn={kpi.total >= 5 && taxaAgenda < 15} />
         <Kpi label="Handoffs pendentes" val={kpi.handoff} sub="briefing p/ comercial" color={C.emp} />
+        <Kpi label="Perdidos" val={kpi.perdidos} sub="fora do funil" color={C.red} />
       </div>
 
       <div style={{ display: "flex", gap: 8, padding: "16px 26px 4px", flexWrap: "wrap", alignItems: "center" }}>
@@ -695,7 +744,7 @@ function KanbanView({ shown, kpi, taxaAgenda, filter, setFilter, setEditing, sav
       )}
 
       <div style={{ display: "flex", gap: 12, padding: "16px 26px 40px", overflowX: "auto", alignItems: "flex-start" }}>
-        {STAGES.map((stage) => {
+        {BOARD_STAGES.map((stage) => {
           const cards = shown.filter((l) => l.stage === stage.id);
           return (
             <div key={stage.id}
@@ -739,25 +788,49 @@ function KanbanView({ shown, kpi, taxaAgenda, filter, setFilter, setEditing, sav
 /* ════════════════ DASHBOARD VIEW ════════════════ */
 function DashboardView({ leads, onOpenLead }) {
   const [pillarFilter, setPillarFilter] = useState("all");
+  const [period, setPeriod] = useState("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
+  /* intervalo {from,to} em yyyy-mm-dd conforme o período (null = sem filtro de tempo) */
+  const range = useMemo(() => {
+    if (period === "week") return weekRange(0);
+    if (period === "lastweek") return weekRange(-1);
+    if (period === "month") return monthRange(0);
+    if (period === "lastmonth") return monthRange(-1);
+    if (period === "custom") return { from: customFrom || null, to: customTo || null };
+    return null;
+  }, [period, customFrom, customTo]);
 
   const filtered = useMemo(() =>
-    leads.filter((l) => pillarFilter === "all" || l.pillar === pillarFilter),
-    [leads, pillarFilter]
+    leads.filter((l) => {
+      if (pillarFilter !== "all" && l.pillar !== pillarFilter) return false;
+      if (range) {
+        const c = l.createdAt || "";
+        if (range.from && c < range.from) return false;
+        if (range.to && c > range.to) return false;
+      }
+      return true;
+    }),
+    [leads, pillarFilter, range]
   );
 
   /* ── métricas ── */
   const m = useMemo(() => {
-    const total = filtered.length;
-    const fichaOk = filtered.filter((l) =>
+    /* perdido fica fora do funil ativo */
+    const ativos = filtered.filter((l) => l.stage !== "perdido");
+    const perdidosLeads = filtered.filter((l) => l.stage === "perdido");
+    const total = ativos.length;
+    const fichaOk = ativos.filter((l) =>
       l.org && l.segment && l.decisorNome && l.contato && l.dor &&
       Array.isArray(l.fit) && l.fit.length > 0 && l.proxContato).length;
-    const visitas = filtered.filter((l) => STAGE_IDX[l.stage] >= 2).length;
-    const handoffPend = filtered.filter((l) => l.stage === "handoff" && !l.briefingEnviado).length;
+    const visitas = ativos.filter((l) => STAGE_IDX[l.stage] >= 2).length;
+    const handoffPend = ativos.filter((l) => l.stage === "handoff" && !l.briefingEnviado).length;
 
-    /* alertas: contato vencido OU briefing atrasado */
+    /* alertas: sem retorno / contato vencido OU briefing atrasado */
     const today = todayISO();
     const dDiff = (iso) => iso ? Math.round((new Date(iso + "T00:00") - new Date(today + "T00:00")) / 86400000) : null;
-    const alertas = filtered.filter((l) => {
+    const alertas = ativos.filter((l) => {
       if ((l.stage === "mapeamento" || l.stage === "exploracao") && l.proxContato) {
         const d = dDiff(l.proxContato); if (d !== null && d < 0) return true;
       }
@@ -766,11 +839,17 @@ function DashboardView({ leads, onOpenLead }) {
       }
       return false;
     });
+    /* candidatos a Perdido: sem retorno há ≥ LOST_THRESHOLD_DAYS além do próximo contato */
+    const candidatosPerda = ativos.filter((l) => {
+      if (l.stage !== "mapeamento" && l.stage !== "exploracao") return false;
+      const d = dDiff(l.proxContato);
+      return d !== null && -d >= LOST_THRESHOLD_DAYS;
+    });
 
     /* contagem por etapa */
     const porEtapa = STAGES.map((s) => ({
       etapa: s.name, id: s.id, color: s.color,
-      n: filtered.filter((l) => l.stage === s.id).length,
+      n: ativos.filter((l) => l.stage === s.id).length,
     }));
     /* taxa de conversão entre etapas (acumulado) */
     const conv = porEtapa.map((e, i) => {
@@ -781,7 +860,7 @@ function DashboardView({ leads, onOpenLead }) {
 
     /* carga por responsável (com breakdown por etapa) */
     const porResp = {};
-    filtered.forEach((l) => {
+    ativos.forEach((l) => {
       (l.responsaveis || []).forEach((r) => {
         if (!porResp[r]) porResp[r] = { name: r, total: 0,
           mapeamento: 0, exploracao: 0, visita: 0, handoff: 0 };
@@ -794,12 +873,12 @@ function DashboardView({ leads, onOpenLead }) {
     /* distribuição por pilar */
     const porPilar = Object.entries(PILLARS).map(([k, p]) => ({
       name: p.label, key: k, color: p.color,
-      value: filtered.filter((l) => l.pillar === k).length,
+      value: ativos.filter((l) => l.pillar === k).length,
     })).filter((x) => x.value > 0);
 
     /* top serviços (fit) */
     const fitCount = {};
-    filtered.forEach((l) => {
+    ativos.forEach((l) => {
       (l.fit || []).forEach((s) => { fitCount[s] = (fitCount[s] || 0) + 1; });
     });
     const fitArr = Object.entries(fitCount).map(([s, n]) => ({ name: s, n }))
@@ -807,20 +886,30 @@ function DashboardView({ leads, onOpenLead }) {
 
     /* canais */
     const canalCount = {};
-    filtered.forEach((l) => { if (l.canal) canalCount[l.canal] = (canalCount[l.canal] || 0) + 1; });
+    ativos.forEach((l) => { if (l.canal) canalCount[l.canal] = (canalCount[l.canal] || 0) + 1; });
     const CANAL_COLORS = { "E-mail": "#0055A5", LinkedIn: "#1565C0", Telefone: "#EC5A24",
       WhatsApp: "#1A7A4A", Presencial: "#6C47D9" };
     const canalArr = Object.entries(canalCount)
       .map(([name, value]) => ({ name, value, color: CANAL_COLORS[name] || "#7A8EAA" }))
       .sort((a, b) => b.value - a.value);
 
+    /* motivos das perdas */
+    const motivoCount = {};
+    perdidosLeads.forEach((l) => {
+      const mo = (l.motivoPerda || "").trim() || "Não informado";
+      motivoCount[mo] = (motivoCount[mo] || 0) + 1;
+    });
+    const motivosArr = Object.entries(motivoCount).map(([name, n]) => ({ name, n }))
+      .sort((a, b) => b.n - a.n);
+
     /* próximos contatos (7 dias) */
-    const proximos = filtered.filter((l) => l.proxContato).map((l) => {
+    const proximos = ativos.filter((l) => l.proxContato).map((l) => {
       const d = dDiff(l.proxContato);
       return { lead: l, d };
     }).filter(({ d }) => d !== null && d >= 0 && d <= 7).sort((a, b) => a.d - b.d);
 
-    return { total, fichaOk, visitas, handoffPend, alertas, porEtapa: conv,
+    return { total, fichaOk, visitas, handoffPend, alertas, candidatosPerda,
+      perdidos: perdidosLeads.length, motivosArr, porEtapa: conv,
       respArr, porPilar, fitArr, canalArr, proximos };
   }, [filtered]);
 
@@ -843,6 +932,30 @@ function DashboardView({ leads, onOpenLead }) {
         </span>
       </div>
 
+      {/* filtro de tempo (por data de criação) */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase",
+          color: C.ink3 }}>Período (criação):</span>
+        {PERIODS.map((p) => (
+          <FilterBtn key={p.id} active={period === p.id} onClick={() => setPeriod(p.id)} label={p.label} />
+        ))}
+        {period === "custom" && (
+          <>
+            <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
+              style={{ ...inputStyle, width: "auto", padding: "6px 8px", fontSize: 12 }} />
+            <span style={{ fontSize: 12, color: C.ink3 }}>até</span>
+            <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
+              style={{ ...inputStyle, width: "auto", padding: "6px 8px", fontSize: 12 }} />
+          </>
+        )}
+        <div style={{ flex: 1 }} />
+        {range && (range.from || range.to) && (
+          <span style={{ fontSize: 11, color: C.ink3 }}>
+            {fmtBR(range.from)} — {fmtBR(range.to)}
+          </span>
+        )}
+      </div>
+
       {/* KPIs */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(155px,1fr))",
         gap: 10, marginBottom: 22 }}>
@@ -855,6 +968,9 @@ function DashboardView({ leads, onOpenLead }) {
         <Kpi label="Alertas" val={m.alertas.length} sub="prazos vencidos" color={C.red}
           warn={m.alertas.length > 0} />
         <Kpi label="Handoffs pendentes" val={m.handoffPend} sub="briefing por enviar" color={C.emp} />
+        <Kpi label="Candidatos a perda" val={m.candidatosPerda.length} sub={`sem retorno ≥ ${LOST_THRESHOLD_DAYS}d`}
+          color={C.orange} warn={m.candidatosPerda.length > 0} />
+        <Kpi label="Perdidos" val={m.perdidos} sub="fora do funil" color={C.red} />
       </div>
 
       {/* FUNIL + PILAR */}
@@ -881,6 +997,16 @@ function DashboardView({ leads, onOpenLead }) {
           <CanaisDonut data={m.canalArr} />
         </DashCard>
       </div>
+
+      {/* MOTIVOS DE PERDA */}
+      {m.perdidos > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <DashCard title={`Motivos de perda — ${m.perdidos} ${m.perdidos === 1 ? "oportunidade" : "oportunidades"}`}
+            subtitle="Por que oportunidades saíram do funil">
+            <ServicosBars data={m.motivosArr} />
+          </DashCard>
+        </div>
+      )}
 
       {/* SAÚDE + PRÓXIMOS */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 18 }}>
@@ -1221,6 +1347,11 @@ function Card({ lead, stage, progress, alertC, alertB, fichaOk, onEdit, onDragSt
             )}
           </div>
         )}
+        {lead.stage === "perdido" && (
+          <div style={{ fontSize: 10.5, color: C.red, marginTop: 7, fontWeight: 600 }}>
+            🚫 Motivo: {lead.motivoPerda || "não informado"}
+          </div>
+        )}
         <div style={{ marginTop: 8 }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: C.ink3, marginBottom: 3 }}>
             <span>Checklist da etapa</span>
@@ -1254,11 +1385,13 @@ function Card({ lead, stage, progress, alertC, alertB, fichaOk, onEdit, onDragSt
           </div>
         )}
         <div style={{ display: "flex", gap: 6, marginTop: 9, alignItems: "center", flexWrap: "wrap" }}>
-          <button onClick={onGuia}
-            style={{ background: stage.color + "14", border: `1px solid ${stage.color}55`, borderRadius: 6,
-              padding: "4px 9px", fontSize: 10, fontWeight: 600, color: stage.color, cursor: "pointer" }}>
-            📖 Guia da etapa
-          </button>
+          {lead.stage !== "perdido" && (
+            <button onClick={onGuia}
+              style={{ background: stage.color + "14", border: `1px solid ${stage.color}55`, borderRadius: 6,
+                padding: "4px 9px", fontSize: 10, fontWeight: 600, color: stage.color, cursor: "pointer" }}>
+              📖 Guia da etapa
+            </button>
+          )}
           {lead.stage === "handoff" && (
             <button onClick={onBriefing}
               style={{ background: C.emp, border: "none", borderRadius: 6, padding: "4px 9px",
@@ -1281,7 +1414,7 @@ function Card({ lead, stage, progress, alertC, alertB, fichaOk, onEdit, onDragSt
 /* ════════════════ GUIA VIEW ════════════════ */
 function GuiaView({ guiaStage, setGuiaStage, guiaPillar, setGuiaPillar, guiaTab, setGuiaTab,
   guiaLead, setGuiaLead }) {
-  const stage = STAGES[STAGE_IDX[guiaStage]];
+  const stage = STAGE_BY_ID[guiaStage] || STAGES[0];
   const data = GUIA[guiaStage];
   const P = PILLARS[guiaPillar];
   const hasObj = data.objeccoes && data.objeccoes[guiaPillar] && data.objeccoes[guiaPillar].length > 0;
@@ -1678,7 +1811,7 @@ function Modal({ lead, onClose, onSave, onDelete }) {
           boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
         <div style={{ background: C.navy, padding: "16px 22px", borderRadius: "14px 14px 0 0" }}>
           <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".12em", textTransform: "uppercase",
-            color: C.orange }}>{STAGES[STAGE_IDX[f.stage]].name}</div>
+            color: C.orange }}>{(STAGE_BY_ID[f.stage] || STAGES[0]).name}</div>
           <div style={{ fontSize: 17, fontWeight: 700, color: "#fff" }}>
             {lead.org ? "Editar lead" : "Novo lead"}
           </div>
@@ -1801,9 +1934,18 @@ function Modal({ lead, onClose, onSave, onDelete }) {
               </label>
             </Field>
           )}
+          {f.stage === "perdido" && (
+            <Field label="Motivo da perda">
+              <input value={f.motivoPerda || ""} onChange={(e) => set("motivoPerda", e.target.value)}
+                list="motivos-perda" style={inputStyle} placeholder="Selecione ou descreva o motivo…" />
+              <datalist id="motivos-perda">
+                {MOTIVOS_PERDA.map((mo) => <option key={mo} value={mo} />)}
+              </datalist>
+            </Field>
+          )}
           <Field label="Etapa do funil">
             <select value={f.stage} onChange={(e) => set("stage", e.target.value)} style={inputStyle}>
-              {STAGES.map((s) => <option key={s.id} value={s.id}>{s.num} — {s.name}</option>)}
+              {BOARD_STAGES.map((s) => <option key={s.id} value={s.id}>{s.num} — {s.name}</option>)}
             </select>
           </Field>
           <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
@@ -1842,6 +1984,31 @@ function BriefingModal({ lead, onClose }) {
       setCopied(true); setTimeout(() => setCopied(false), 1800);
     }).catch(() => {});
   };
+  const exportPdf = () => {
+    const win = window.open("", "_blank");
+    if (!win) { alert("Não foi possível abrir a janela de impressão. Verifique o bloqueador de pop-ups."); return; }
+    const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const org = lead.org || "Lead";
+    win.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<title>Briefing - ${esc(org)}</title>
+<style>
+  @page { margin: 18mm; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #0A1628; margin: 0; }
+  .eyebrow { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #EC5A24; }
+  h1 { font-size: 18px; margin: 4px 0 2px; }
+  .meta { font-size: 12px; color: #7A8EAA; margin: 0 0 16px; padding-bottom: 12px; border-bottom: 1px solid #C8D4E8; }
+  pre { white-space: pre-wrap; word-wrap: break-word; font-family: ui-monospace, 'DM Mono', monospace; font-size: 12px; line-height: 1.7; margin: 0; }
+</style></head><body>
+<div class="eyebrow">HUB SENAI Alagoas &middot; Handoff comercial</div>
+<h1>Briefing &mdash; ${esc(org)}</h1>
+<div class="meta">Gerado em ${new Date().toLocaleDateString("pt-BR")}</div>
+<pre>${esc(text)}</pre>
+</body></html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 300);
+  };
   return (
     <div onClick={onClose}
       style={{ position: "fixed", inset: 0, background: "rgba(10,22,40,.55)", zIndex: 200,
@@ -1874,6 +2041,11 @@ function BriefingModal({ lead, onClose }) {
               style={{ background: C.white, color: C.ink2, border: `1px solid ${C.border}`, borderRadius: 8,
                 padding: "9px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
               Fechar
+            </button>
+            <button onClick={exportPdf}
+              style={{ background: C.white, color: C.emp, border: `1px solid ${C.emp}`, borderRadius: 8,
+                padding: "9px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              ⬇ Baixar PDF
             </button>
             <button onClick={copy}
               style={{ background: copied ? C.proto : C.emp, color: "#fff", border: "none", borderRadius: 8,

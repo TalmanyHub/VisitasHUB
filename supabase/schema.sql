@@ -24,6 +24,7 @@ create table if not exists public.hub_leads (
   decisor_final_contato text not null default '',
   proximo_passo text not null default '',
   visita_realizada boolean not null default false,
+  motivo_perda text not null default '',
   briefing_enviado boolean not null default false,
   data_entrada_handoff text not null default '',
   checks jsonb not null default '{}'::jsonb,
@@ -38,6 +39,7 @@ alter table public.hub_leads add column if not exists decisor_final_cargo text n
 alter table public.hub_leads add column if not exists decisor_final_contato text not null default '';
 alter table public.hub_leads add column if not exists proximo_passo text not null default '';
 alter table public.hub_leads add column if not exists visita_realizada boolean not null default false;
+alter table public.hub_leads add column if not exists motivo_perda text not null default '';
 
 create index if not exists hub_leads_stage_idx on public.hub_leads (stage);
 create index if not exists hub_leads_pillar_idx on public.hub_leads (pillar);
