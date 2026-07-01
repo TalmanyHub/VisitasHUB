@@ -1984,6 +1984,31 @@ function BriefingModal({ lead, onClose }) {
       setCopied(true); setTimeout(() => setCopied(false), 1800);
     }).catch(() => {});
   };
+  const exportPdf = () => {
+    const win = window.open("", "_blank");
+    if (!win) { alert("Não foi possível abrir a janela de impressão. Verifique o bloqueador de pop-ups."); return; }
+    const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const org = lead.org || "Lead";
+    win.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<title>Briefing - ${esc(org)}</title>
+<style>
+  @page { margin: 18mm; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #0A1628; margin: 0; }
+  .eyebrow { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #EC5A24; }
+  h1 { font-size: 18px; margin: 4px 0 2px; }
+  .meta { font-size: 12px; color: #7A8EAA; margin: 0 0 16px; padding-bottom: 12px; border-bottom: 1px solid #C8D4E8; }
+  pre { white-space: pre-wrap; word-wrap: break-word; font-family: ui-monospace, 'DM Mono', monospace; font-size: 12px; line-height: 1.7; margin: 0; }
+</style></head><body>
+<div class="eyebrow">HUB SENAI Alagoas &middot; Handoff comercial</div>
+<h1>Briefing &mdash; ${esc(org)}</h1>
+<div class="meta">Gerado em ${new Date().toLocaleDateString("pt-BR")}</div>
+<pre>${esc(text)}</pre>
+</body></html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 300);
+  };
   return (
     <div onClick={onClose}
       style={{ position: "fixed", inset: 0, background: "rgba(10,22,40,.55)", zIndex: 200,
@@ -2016,6 +2041,11 @@ function BriefingModal({ lead, onClose }) {
               style={{ background: C.white, color: C.ink2, border: `1px solid ${C.border}`, borderRadius: 8,
                 padding: "9px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
               Fechar
+            </button>
+            <button onClick={exportPdf}
+              style={{ background: C.white, color: C.emp, border: `1px solid ${C.emp}`, borderRadius: 8,
+                padding: "9px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              ⬇ Baixar PDF
             </button>
             <button onClick={copy}
               style={{ background: copied ? C.proto : C.emp, color: "#fff", border: "none", borderRadius: 8,
