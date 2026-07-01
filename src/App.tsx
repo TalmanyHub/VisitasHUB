@@ -355,6 +355,37 @@ const daysDiff = (iso) => {
   if (!iso) return null;
   return Math.round((new Date(iso + "T00:00") - new Date(todayISO() + "T00:00")) / 86400000);
 };
+/* data local no formato yyyy-mm-dd (sem shift de fuso do toISOString) */
+const isoDay = (date) => {
+  const y = date.getFullYear();
+  const mo = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${mo}-${d}`;
+};
+/* intervalo da semana (segunda→domingo); offset em semanas (0 = atual, -1 = anterior) */
+const weekRange = (offset = 0) => {
+  const now = new Date();
+  const dow = (now.getDay() + 6) % 7; // segunda = 0
+  const mon = new Date(now); mon.setDate(now.getDate() - dow + offset * 7);
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  return { from: isoDay(mon), to: isoDay(sun) };
+};
+/* intervalo do mês; offset em meses (0 = atual, -1 = anterior) */
+const monthRange = (offset = 0) => {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const last = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0);
+  return { from: isoDay(first), to: isoDay(last) };
+};
+const PERIODS = [
+  { id: "all", label: "Tudo" },
+  { id: "week", label: "Esta semana" },
+  { id: "lastweek", label: "Semana anterior" },
+  { id: "month", label: "Este mês" },
+  { id: "lastmonth", label: "Mês anterior" },
+  { id: "custom", label: "Personalizado" },
+];
+const fmtBR = (iso) => (iso ? new Date(iso + "T00:00").toLocaleDateString("pt-BR") : "—");
 const blankLead = (pillar = "emp") => ({
   id: uid(), stage: "mapeamento", pillar, org: "", segment: "", decisorNome: "", decisorCargo: "",
   contato: "", whatsapp: "", dor: "", fit: [], responsaveis: [], canal: "E-mail", proxContato: "", dataVisita: "",
@@ -757,10 +788,31 @@ function KanbanView({ shown, kpi, taxaAgenda, filter, setFilter, setEditing, sav
 /* ════════════════ DASHBOARD VIEW ════════════════ */
 function DashboardView({ leads, onOpenLead }) {
   const [pillarFilter, setPillarFilter] = useState("all");
+  const [period, setPeriod] = useState("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
+  /* intervalo {from,to} em yyyy-mm-dd conforme o período (null = sem filtro de tempo) */
+  const range = useMemo(() => {
+    if (period === "week") return weekRange(0);
+    if (period === "lastweek") return weekRange(-1);
+    if (period === "month") return monthRange(0);
+    if (period === "lastmonth") return monthRange(-1);
+    if (period === "custom") return { from: customFrom || null, to: customTo || null };
+    return null;
+  }, [period, customFrom, customTo]);
 
   const filtered = useMemo(() =>
-    leads.filter((l) => pillarFilter === "all" || l.pillar === pillarFilter),
-    [leads, pillarFilter]
+    leads.filter((l) => {
+      if (pillarFilter !== "all" && l.pillar !== pillarFilter) return false;
+      if (range) {
+        const c = l.createdAt || "";
+        if (range.from && c < range.from) return false;
+        if (range.to && c > range.to) return false;
+      }
+      return true;
+    }),
+    [leads, pillarFilter, range]
   );
 
   /* ── métricas ── */
@@ -878,6 +930,30 @@ function DashboardView({ leads, onOpenLead }) {
         <span style={{ fontSize: 11, color: C.ink3 }}>
           {m.total} {m.total === 1 ? "lead" : "leads"} considerado{m.total === 1 ? "" : "s"}
         </span>
+      </div>
+
+      {/* filtro de tempo (por data de criação) */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase",
+          color: C.ink3 }}>Período (criação):</span>
+        {PERIODS.map((p) => (
+          <FilterBtn key={p.id} active={period === p.id} onClick={() => setPeriod(p.id)} label={p.label} />
+        ))}
+        {period === "custom" && (
+          <>
+            <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
+              style={{ ...inputStyle, width: "auto", padding: "6px 8px", fontSize: 12 }} />
+            <span style={{ fontSize: 12, color: C.ink3 }}>até</span>
+            <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
+              style={{ ...inputStyle, width: "auto", padding: "6px 8px", fontSize: 12 }} />
+          </>
+        )}
+        <div style={{ flex: 1 }} />
+        {range && (range.from || range.to) && (
+          <span style={{ fontSize: 11, color: C.ink3 }}>
+            {fmtBR(range.from)} — {fmtBR(range.to)}
+          </span>
+        )}
       </div>
 
       {/* KPIs */}
