@@ -27,6 +27,7 @@ export type Lead = {
   decisorFinalContato: string;
   proximoPasso: string;
   visitaRealizada: boolean;
+  motivoPerda: string;
   briefingEnviado: boolean;
   dataEntradaHandoff: string;
   checks: Record<string, boolean>;
@@ -56,6 +57,7 @@ type LeadRow = {
   decisor_final_contato: string;
   proximo_passo: string;
   visita_realizada: boolean;
+  motivo_perda: string;
   briefing_enviado: boolean;
   data_entrada_handoff: string;
   checks: Record<string, boolean> | null;
@@ -116,6 +118,7 @@ export function normalizeLead(raw: Partial<Lead> & { id: string }): Lead {
     decisorFinalContato: raw.decisorFinalContato ?? "",
     proximoPasso: raw.proximoPasso ?? "",
     visitaRealizada: Boolean(raw.visitaRealizada),
+    motivoPerda: raw.motivoPerda ?? "",
     briefingEnviado: Boolean(raw.briefingEnviado),
     dataEntradaHandoff: raw.dataEntradaHandoff ?? "",
     checks: raw.checks && typeof raw.checks === "object" ? raw.checks : {},
@@ -147,6 +150,7 @@ function toRow(lead: Lead): LeadRow {
     decisor_final_contato: lead.decisorFinalContato,
     proximo_passo: lead.proximoPasso,
     visita_realizada: lead.visitaRealizada,
+    motivo_perda: lead.motivoPerda,
     briefing_enviado: lead.briefingEnviado,
     data_entrada_handoff: lead.dataEntradaHandoff,
     checks: lead.checks,
@@ -178,6 +182,7 @@ function fromRow(row: LeadRow): Lead {
     decisorFinalContato: row.decisor_final_contato,
     proximoPasso: row.proximo_passo,
     visitaRealizada: row.visita_realizada,
+    motivoPerda: row.motivo_perda,
     briefingEnviado: row.briefing_enviado,
     dataEntradaHandoff: row.data_entrada_handoff,
     checks: row.checks ?? {},
