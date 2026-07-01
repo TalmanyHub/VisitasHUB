@@ -10,6 +10,7 @@ create table if not exists public.hub_leads (
   decisor_nome text not null default '',
   decisor_cargo text not null default '',
   contato text not null default '',
+  whatsapp text not null default '',
   dor text not null default '',
   fit jsonb not null default '[]'::jsonb,
   responsaveis jsonb not null default '[]'::jsonb,
@@ -18,12 +19,25 @@ create table if not exists public.hub_leads (
   data_visita text not null default '',
   objecoes text not null default '',
   relatorio_dores text not null default '',
+  decisor_final_nome text not null default '',
+  decisor_final_cargo text not null default '',
+  decisor_final_contato text not null default '',
+  proximo_passo text not null default '',
+  visita_realizada boolean not null default false,
   briefing_enviado boolean not null default false,
   data_entrada_handoff text not null default '',
   checks jsonb not null default '{}'::jsonb,
   created_at date not null default current_date,
   updated_at timestamptz not null default now()
 );
+
+-- Migração para tabelas já existentes (idempotente): adiciona as colunas novas se faltarem.
+alter table public.hub_leads add column if not exists whatsapp text not null default '';
+alter table public.hub_leads add column if not exists decisor_final_nome text not null default '';
+alter table public.hub_leads add column if not exists decisor_final_cargo text not null default '';
+alter table public.hub_leads add column if not exists decisor_final_contato text not null default '';
+alter table public.hub_leads add column if not exists proximo_passo text not null default '';
+alter table public.hub_leads add column if not exists visita_realizada boolean not null default false;
 
 create index if not exists hub_leads_stage_idx on public.hub_leads (stage);
 create index if not exists hub_leads_pillar_idx on public.hub_leads (pillar);

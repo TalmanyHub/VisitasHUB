@@ -13,6 +13,7 @@ export type Lead = {
   decisorNome: string;
   decisorCargo: string;
   contato: string;
+  whatsapp: string;
   dor: string;
   fit: string[];
   responsaveis: string[];
@@ -21,6 +22,11 @@ export type Lead = {
   dataVisita: string;
   objecoes: string;
   relatorioDores: string;
+  decisorFinalNome: string;
+  decisorFinalCargo: string;
+  decisorFinalContato: string;
+  proximoPasso: string;
+  visitaRealizada: boolean;
   briefingEnviado: boolean;
   dataEntradaHandoff: string;
   checks: Record<string, boolean>;
@@ -36,6 +42,7 @@ type LeadRow = {
   decisor_nome: string;
   decisor_cargo: string;
   contato: string;
+  whatsapp: string;
   dor: string;
   fit: string[] | null;
   responsaveis: string[] | null;
@@ -44,6 +51,11 @@ type LeadRow = {
   data_visita: string;
   objecoes: string;
   relatorio_dores: string;
+  decisor_final_nome: string;
+  decisor_final_cargo: string;
+  decisor_final_contato: string;
+  proximo_passo: string;
+  visita_realizada: boolean;
   briefing_enviado: boolean;
   data_entrada_handoff: string;
   checks: Record<string, boolean> | null;
@@ -90,6 +102,7 @@ export function normalizeLead(raw: Partial<Lead> & { id: string }): Lead {
     decisorNome: raw.decisorNome ?? "",
     decisorCargo: raw.decisorCargo ?? "",
     contato: raw.contato ?? "",
+    whatsapp: raw.whatsapp ?? "",
     dor: raw.dor ?? "",
     fit: migrateFit(raw.fit),
     responsaveis: Array.isArray(raw.responsaveis) ? raw.responsaveis : [],
@@ -98,6 +111,11 @@ export function normalizeLead(raw: Partial<Lead> & { id: string }): Lead {
     dataVisita: raw.dataVisita ?? "",
     objecoes: raw.objecoes ?? "",
     relatorioDores: raw.relatorioDores ?? "",
+    decisorFinalNome: raw.decisorFinalNome ?? "",
+    decisorFinalCargo: raw.decisorFinalCargo ?? "",
+    decisorFinalContato: raw.decisorFinalContato ?? "",
+    proximoPasso: raw.proximoPasso ?? "",
+    visitaRealizada: Boolean(raw.visitaRealizada),
     briefingEnviado: Boolean(raw.briefingEnviado),
     dataEntradaHandoff: raw.dataEntradaHandoff ?? "",
     checks: raw.checks && typeof raw.checks === "object" ? raw.checks : {},
@@ -115,6 +133,7 @@ function toRow(lead: Lead): LeadRow {
     decisor_nome: lead.decisorNome,
     decisor_cargo: lead.decisorCargo,
     contato: lead.contato,
+    whatsapp: lead.whatsapp,
     dor: lead.dor,
     fit: lead.fit,
     responsaveis: lead.responsaveis,
@@ -123,6 +142,11 @@ function toRow(lead: Lead): LeadRow {
     data_visita: lead.dataVisita,
     objecoes: lead.objecoes,
     relatorio_dores: lead.relatorioDores,
+    decisor_final_nome: lead.decisorFinalNome,
+    decisor_final_cargo: lead.decisorFinalCargo,
+    decisor_final_contato: lead.decisorFinalContato,
+    proximo_passo: lead.proximoPasso,
+    visita_realizada: lead.visitaRealizada,
     briefing_enviado: lead.briefingEnviado,
     data_entrada_handoff: lead.dataEntradaHandoff,
     checks: lead.checks,
@@ -140,6 +164,7 @@ function fromRow(row: LeadRow): Lead {
     decisorNome: row.decisor_nome,
     decisorCargo: row.decisor_cargo,
     contato: row.contato,
+    whatsapp: row.whatsapp,
     dor: row.dor,
     fit: row.fit ?? [],
     responsaveis: row.responsaveis ?? [],
@@ -148,6 +173,11 @@ function fromRow(row: LeadRow): Lead {
     dataVisita: row.data_visita,
     objecoes: row.objecoes,
     relatorioDores: row.relatorio_dores,
+    decisorFinalNome: row.decisor_final_nome,
+    decisorFinalCargo: row.decisor_final_cargo,
+    decisorFinalContato: row.decisor_final_contato,
+    proximoPasso: row.proximo_passo,
+    visitaRealizada: row.visita_realizada,
     briefingEnviado: row.briefing_enviado,
     dataEntradaHandoff: row.data_entrada_handoff,
     checks: row.checks ?? {},

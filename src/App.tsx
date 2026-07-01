@@ -343,8 +343,9 @@ const daysDiff = (iso) => {
 };
 const blankLead = (pillar = "emp") => ({
   id: uid(), stage: "mapeamento", pillar, org: "", segment: "", decisorNome: "", decisorCargo: "",
-  contato: "", dor: "", fit: [], responsaveis: [], canal: "E-mail", proxContato: "", dataVisita: "",
-  objecoes: "", relatorioDores: "", briefingEnviado: false, dataEntradaHandoff: "", checks: {},
+  contato: "", whatsapp: "", dor: "", fit: [], responsaveis: [], canal: "E-mail", proxContato: "", dataVisita: "",
+  objecoes: "", relatorioDores: "", decisorFinalNome: "", decisorFinalCargo: "", decisorFinalContato: "",
+  proximoPasso: "", visitaRealizada: false, briefingEnviado: false, dataEntradaHandoff: "", checks: {},
   createdAt: todayISO(),
 });
 const SEED = [
@@ -1717,9 +1718,14 @@ function Modal({ lead, onClose, onSave, onDelete }) {
                 placeholder={f.pillar === "emp" ? "Ex: Sec. de Desenvolvimento" : "Ex: Gerente de Engenharia"} />
             </Field>
           </div>
-          <Field label="Contato (e-mail ou telefone)">
-            <Input value={f.contato} onChange={(v) => set("contato", v)} placeholder="contato@..." />
-          </Field>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Field label="Contato (e-mail ou telefone)" flex>
+              <Input value={f.contato} onChange={(v) => set("contato", v)} placeholder="contato@..." />
+            </Field>
+            <Field label="WhatsApp" flex>
+              <Input value={f.whatsapp} onChange={(v) => set("whatsapp", v)} placeholder="(82) 9xxxx-xxxx" />
+            </Field>
+          </div>
           <Field label="Dor provável">
             <Input value={f.dor} onChange={(v) => set("dor", v)}
               placeholder={f.pillar === "emp" ? "Ex: Alta informalidade" : "Ex: Retrabalho por erro de projeto"} />
@@ -1754,6 +1760,33 @@ function Modal({ lead, onClose, onSave, onDelete }) {
                 <textarea value={f.objecoes} onChange={(e) => set("objecoes", e.target.value)}
                   rows={2} style={{ ...inputStyle, resize: "vertical" }}
                   placeholder="Ex: 'Já temos parceria com o SEBRAE'..." />
+              </Field>
+              <Field label="Decisor final — quem assina (se diferente do contato)">
+                <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <Input value={f.decisorFinalNome} onChange={(v) => set("decisorFinalNome", v)}
+                      placeholder="Nome do decisor final" />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <Input value={f.decisorFinalCargo} onChange={(v) => set("decisorFinalCargo", v)}
+                      placeholder="Cargo" />
+                  </div>
+                </div>
+                <Input value={f.decisorFinalContato} onChange={(v) => set("decisorFinalContato", v)}
+                  placeholder="Contato do decisor (e-mail, telefone ou WhatsApp)" />
+              </Field>
+              <Field label="Próximo passo combinado com o cliente">
+                <Input value={f.proximoPasso} onChange={(v) => set("proximoPasso", v)}
+                  placeholder="Ex: devolutiva até sexta-feira" />
+              </Field>
+              <Field label="Status da visita">
+                <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: C.ink2,
+                  cursor: "pointer", padding: "4px 0" }}>
+                  <input type="checkbox" checked={f.visitaRealizada}
+                    onChange={(e) => set("visitaRealizada", e.target.checked)}
+                    style={{ accentColor: C.navy }} />
+                  Visita realizada
+                </label>
               </Field>
             </>
           )}
